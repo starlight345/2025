@@ -56,6 +56,7 @@ The underlying distribution $$\mathcal{D}$$ is assumed to be large enough to the
 
 It is important to note here that these non-members should be from the **same** underlying distribution. To better understand why this is important, think of a model trained for the binary classification task of distinguishing images of squirrels and groundhogs <d-footnote>Maybe you want to give nuts to squirrels and vegetables to groundhogs </d-footnote>. For this example, let's say this particular groundhog image was part of the training data, but the other two weren't.
 
+<!--
 <div class="row mt-3">
     <div class="col-sm mt-3 mt-md-0">
         {% include figure.liquid loading="eager" path="assets/img/calibrated-mia/groundhog.avif" class="img-fluid rounded z-depth-1" %}
@@ -67,6 +68,7 @@ It is important to note here that these non-members should be from the **same** 
         {% include figure.liquid loading="eager" path="assets/img/calibrated-mia/llama.webp" class="img-fluid rounded z-depth-1" %}
     </div>
 </div>
+-->
 
 A model will have higher loss on images of llamas, and understandably so since these are images the model did not see at all during training. Using their images would give a clear member/non-member distinction, but would also probably classify *any* squirrel/groundhog image as a member, even if it wasn't. As an experimental setup, this is easily enforced when working with standard machine learning models and datasets such as CIFAR-10 and ImageNet, where well-established train/test splits from the same underlying distribution exist.
 
