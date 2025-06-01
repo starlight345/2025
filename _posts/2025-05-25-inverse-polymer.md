@@ -4,6 +4,7 @@ layout: distill
 title: "AI810 Blog Post (20253793)" 
 description: "We explore a full inverse design pipeline using TabNet-based property embedding prediction, GRU-based SMILES decoding, and reinforcement learning for structural refinement."
 date: 2025-05-25
+permalink: /blog/inverse-polymer/ 
 future: true
 htmlwidgets: true
 
