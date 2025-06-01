@@ -115,7 +115,7 @@ This architectural flexibility, coupled with strong empirical results, motivated
 
 The pipeline is visualized below:
 
-{% include figure.html path="assets/img/2025-04-28-inverse-polymer/tabnet_knn.png" class="img-fluid" %}
+{% include figure.html path="assets/img/2025-05-25-inverse-polymer/TabNet_knn_pipeline.png" class="img-fluid" %}
 
 We trained TabNet on a dataset with up to 25M samples and evaluated performance using a KNN-based retrieval in the 600-dim embedding space. Evaluation was accelerated with FAISS but showed a severe drop in performance as the candidate pool grew:
 
