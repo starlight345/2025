@@ -58,7 +58,11 @@ Ultimately, our goal is to replace the GRU decoder with a Transformer-based deco
 
 Our initial inverse task leverages TabNet to regress from a target property vector to a latent polymer embedding.
 
-TabNet structurally incorporates Transformer-style attention, making it well-suited for sequential and feature-selection tasks. However, in the PolyOne dataset (introduced in the PolyBERT paper), the 29 properties are not sequential but rather independent columns. This raised concerns about whether TabNet, typically strong in sequential or hierarchical data, would be effective in this context.
+TabNet structurally incorporates Transformer-style attention, making it well-suited for sequential and feature-selection tasks. However, in the PolyOne dataset (introduced in the PolyBERT paper), the 29 properties are not sequential but rather independent columns — raising concerns about whether TabNet, typically strong in sequential or hierarchical data, would still be effective in this context.
+
+To investigate this, we applied unsupervised pre-training on structured tables, as shown below:
+
+{% include figure.html path="assets/img/2025-05-25-inverse-polymer/tabnet_structure.png" class="img-fluid" %}
 
 To better understand the relationship between individual properties and the PolyBERT embedding, we applied structured masking during training — both for the property-to-embedding direction and the reverse embedding-to-property prediction. This bidirectional setup allowed us to assess how each property influences the latent space and vice versa. We hoped that by forcing the model to reason with only partial information at each step, TabNet would learn to identify key feature interactions.
 
@@ -170,12 +174,12 @@ While generation from real PolyBERT embeddings produces valid outputs, decoding 
 
 We also benchmarked our GRU decoder against a Transformer-based encoder-decoder (e.g., T5-style) trained to reconstruct SMILES, optionally using PolyBERT embeddings as input. Despite achieving similar top-1 matches, seq2seq decoders exhibited significant issues with predicting EOS tokens correctly. Even after doubling the weight of EOS tokens during training, validity remained low. This was tested under multiple configurations, and the results are summarized below. Here, Tanimoto similarity refers to a fingerprint-based structural similarity score ranging from 0 to 1.
 
-
 | Model Variant             | Validity (%) | Mean Tanimoto |
 | ------------------------- | ------------ | ------------- |
 | GRU Decoder               | 23.0         | 0.9775        |
-| Seq2Seq (index=40)        | 16.0         | 0.9425        |
-| Seq2Seq (EOS×2, index=40) | 17.0         | 0.9643        |
+| Seq2Seq                   | 16.0         | 0.9425        |
+| Seq2Seq (EOS×2)           | 17.0         | 0.9643        |
+
 
 These findings highlight that both GRU and seq2seq decoding approaches still require significant improvement in terms of validity. GRU decoding currently appears more robust for latent-to-sequence generation, especially when working with a fixed embedding distribution. Seq2seq models may benefit from architectural innovations or stronger EOS supervision but underperformed in our setting. Moreover, we observed that the decoder’s performance improves when the latent embedding is repeatedly concatenated to the token inputs at each step — mitigating the vanishing context issue over long sequences.
 
@@ -236,7 +240,7 @@ This reward function favors chemically valid structures that are both similar to
 
 By applying MCTS after decoding, we gain robustness against errors from the base model. For example, even when the decoder generates an invalid or unrealistic structure, MCTS can recover a plausible and property-matching molecule through localized edits. This makes the method particularly useful when decoding from noisy latent embeddings, such as those predicted by TabNet in our pipeline.
 
-Furthermore, the modularity of this approach allows it to be combined with any generative model, including GRU- or Transformer-based decoders. While our current method manipulates SMILES at the string level, future extensions may incorporate graph-based edits or substructure-aware rollouts, inspired by works like VGAE-MCTS. Such enhancements could provide even finer control over chemical structure during the search process.
+Furthermore, the modularity of this approach allows it to be combined with any generative model, including GRU- or Transformer-based decoders. While our current method manipulates SMILES at the string level, future extensions may incorporate graph-based edits or substructure-aware rollouts, inspired by works like VGAE-MCTS<d-cite key="doi:10.1021/acs.jcim.3c01220"></d-cite>. Such enhancements could provide even finer control over chemical structure during the search process.
 
 Ultimately, MCTS acts as a chemically grounded corrector that refines generated candidates into valid, property-aligned polymers. It bridges the gap between raw generation and task-specific optimization, improving both the plausibility and functional relevance of the final outputs.
 
@@ -302,8 +306,8 @@ We also trained a T5-style decoder to reconstruct SMILES. Despite similar top-1 
 | Model Variant             | Validity (%) | Mean Tanimoto |
 | ------------------------- | ------------ | ------------- |
 | GRU Decoder               | 23.0         | 0.9775        |
-| Seq2Seq (index=40)        | 16.0         | 0.9425        |
-| Seq2Seq (EOS×2, index=40) | 17.0         | 0.9643        |
+| Seq2Seq                   | 16.0         | 0.9425        |
+| Seq2Seq (EOS×2)           | 17.0         | 0.9643        |
 
 
 This comparison motivated our exploration of joint encoder-decoder training, MCTS postprocessing, and diffusion+RL generation, aiming to improve structural validity and alignment with desired properties.
