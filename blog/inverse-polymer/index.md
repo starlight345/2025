@@ -122,13 +122,38 @@ We trained TabNet on a dataset with up to 25M samples and evaluated performance 
 - **10M training → 1.5M eval**: Top-1 accuracy = 46.3%  
 - **25M training → 2.5M eval**: Top-1 accuracy = 19.7%
 
-While fast, this retrieval method suffers from three main limitations:
+To better understand the significance of our KNN-based retrieval performance, we compared it against a **random retrieval baseline**, which provides a reference for interpreting Top-1 accuracy in large candidate spaces.
 
-1. Requires a large embedding database at inference.
-2. Retrieves existing polymers, not novel ones.
-3. Cannot guarantee structural validity or property match.
+- For **1.5M candidates**, the expected Top-1 accuracy from random selection is:
+  
+  $$
+  \text{Random Top-1 Accuracy} = \frac{1}{1{,}500{,}000} \approx 0.000067\%
+  $$
 
-These issues motivate the shift toward generative modeling.
+- For **2.5M candidates**, the expected Top-1 accuracy from random selection is:
+  
+  $$
+  \frac{1}{2{,}500{,}000} \approx 0.00004\%
+  $$
+
+In contrast, our TabNet-based retrieval achieves:
+
+- **46.3%** accuracy on 1.5M candidates → over **690,000× better** than random
+- **19.7%** accuracy on 2.5M candidates → over **490,000× better** than random
+
+These comparisons clearly demonstrate that the model has learned a **highly structured and informative embedding space**, even when the candidate pool becomes extremely large.
+
+> While the absolute Top-1 accuracy drops with larger candidate sets, the performance remains **orders of magnitude better** than random guessing.
+
+However, to more rigorously evaluate the retrieval quality, it would have been helpful to analyze the **distributional structure** of the polymer embeddings in the latent space — for example, through **density plots, clustering analysis, or distance histograms**. These could have revealed whether the drop in performance is due to increased overlap between clusters, embedding crowding, or simply the combinatorial explosion of candidates.
+
+Unfortunately, such analysis was beyond the scope of our current experiments. Nevertheless, these results provide strong evidence that learned embeddings capture meaningful property-driven structure — justifying our transition from retrieval to **generative modeling**, which offers greater flexibility and novelty.
+
+Despite its strong performance relative to random baselines, the retrieval-based approach has inherent limitations that restrict its utility in real-world inverse design tasks.
+
+Most notably, it is constrained to **selecting from a fixed database** — meaning it cannot generate entirely new polymer structures beyond what was seen during training. This restricts novelty and limits the method's ability to explore the vast chemical design space. Additionally, even high-ranking candidates in the embedding space may **lack structural validity** or **fail to meet property constraints** due to the imperfect alignment between embeddings and molecular feasibility.
+
+These limitations highlight a crucial need for **generative modeling**, which allows us to go beyond retrieval and **construct novel polymer structures** directly from target properties. By training a decoder that maps embeddings into pSMILES sequences, we unlock the ability to explore the design space in a controlled and flexible manner — a capability retrieval alone cannot provide.
 
 
 ---
@@ -154,6 +179,43 @@ We train the decoder using teacher forcing on a dataset of (embedding, SMILES) p
 {% include figure.html path="assets/img/2025-04-28-inverse-polymer/reconstruction\_examples.png" class="img-fluid" %}
 
 However, decoding embeddings predicted by TabNet (rather than real embeddings) leads to poor results. This is likely due to a mismatch between the latent spaces: the decoder only sees valid PolyBERT embeddings during training, not the out-of-distribution outputs from TabNet.
+
+
+
+# GRU Decoder for SMILES Generation
+
+To enable direct generation of polymer structures, we designed a GRU-based decoder that maps 600-dimensional embeddings to pSMILES sequences. SMILES are inherently sequential — token order directly affects molecular meaning — and GRUs are memory-efficient RNNs that perform well on limited data. Compared to LSTMs, GRUs train faster and generalize better under data scarcity. GRU-based generation has seen prior success in models like ChemTS and MolGPT. While ChemTS explores SMILES generation via random mutation and reward-guided exploration, our model decodes structured embeddings into full SMILES strings using learned associations. Our approach differs in that it performs direct decoding from polymer property-guided latent vectors and aims to reconstruct meaningful structures deterministically.
+
+We implemented a 2-layer GRU with hidden size 512 and dropout 0.1, trained via teacher forcing on (embedding, SMILES) pairs tokenized using a pretrained PolyBERT tokenizer. We used cross-entropy loss with padding tokens ignored and achieved ≈97.6% token-level accuracy on held-out validation sets. To enhance robustness, Gaussian noise was optionally added to the latent embedding during training, enabling more stable generation from perturbed embeddings. During inference, greedy decoding reconstructs SMILES sequences from embeddings, using the 600-dim input as the initial hidden state.
+
+While generation from real PolyBERT embeddings produces valid outputs, decoding TabNet-generated embeddings often fails. This is likely due to a mismatch between latent distributions — the decoder was only trained on real embeddings, not the broader, noisier space produced by TabNet. To address this, we plan to fine-tune the decoder using noisy or perturbed embeddings and pursue joint encoder-decoder training strategies. A longer-term solution involves training the decoder to robustly map a local neighborhood around the embedding — aligning closely with diffusion-based models where multiple generations are possible from a single latent z.
+
+## Seq2Seq Comparison and EOS Prediction Challenges
+
+We also benchmarked our GRU decoder against a Transformer-based encoder-decoder (e.g., T5-style) trained to reconstruct SMILES, optionally using PolyBERT embeddings as input. Despite achieving similar top-1 matches, seq2seq decoders exhibited significant issues with predicting EOS tokens correctly. Even after doubling the weight of EOS tokens during training, validity remained low. This was tested under multiple configurations, and the results are summarized below. Here, Tanimoto similarity refers to a fingerprint-based structural similarity score ranging from 0 to 1.
+
+
+| Model Variant             | Validity (%) | Mean Tanimoto |
+| ------------------------- | ------------ | ------------- |
+| GRU Decoder               | 23.0         | 0.9775        |
+| Seq2Seq (index=40)        | 16.0         | 0.9425        |
+| Seq2Seq (EOS×2, index=40) | 17.0         | 0.9643        |
+
+These findings highlight that both GRU and seq2seq decoding approaches still require significant improvement in terms of validity. GRU decoding currently appears more robust for latent-to-sequence generation, especially when working with a fixed embedding distribution. Seq2seq models may benefit from architectural innovations or stronger EOS supervision but underperformed in our setting. Moreover, we observed that the decoder’s performance improves when the latent embedding is repeatedly concatenated to the token inputs at each step — mitigating the vanishing context issue over long sequences.
+
+## Toward Robustness and Validity: Planned Improvements
+
+To further address generation variability and increase model robustness, we plan to extend this setup into a diffusion-style training regime. In this framework, Gaussian noise is repeatedly added to the latent z, and the decoder is trained to map each noisy version back to the same SMILES output. This trains the decoder to produce consistent generations even under perturbations, laying the groundwork for controlled diversity and one-to-many mapping via policy-guided sampling.
+
+In addition to sequential decoding challenges, our experiments revealed a strong tendency to mispredict EOS tokens, even under weighted loss training. This observation suggests the decoder has difficulty learning global termination constraints from local token sequences. As a remedy, we plan to enhance decoder supervision through context-aware mechanisms that track decoding progress and apply structural constraints.
+
+To mitigate invalid SMILES generation, we also consider incorporating structural priors. Inspired by <d-cite key="jin2019junctiontreevariationalautoencoder"></d-cite>, we plan to investigate generation strategies that first construct coarse-grained tree-like motifs (e.g., thiophene rings, alkyl chains) before assembling complete molecular graphs. While we do not adopt JT-VAE directly, we aim to emulate the concept of hierarchical structure by generating valid fragments first, followed by fine-grained atom-level decoding. This hybrid approach could improve syntactic correctness by preventing impossible ring closures or malformed branches.
+
+Recognizing that sequential decoders trained under teacher forcing often lack awareness of chemical constraints, we are also exploring rule-based masking and memory mechanisms. These would allow the decoder to track open and closed rings, and enforce one-time closure constraints during generation. Rather than relying solely on attention-based decoders to implicitly learn such rules, we propose to incorporate explicit tracking of generation context — for instance, remembering ring-opening events and ensuring that each ring is closed exactly once. While implementing such chemically informed generation constraints is challenging, it may offer a principled solution to reduce invalid outputs in autoregressive decoders.
+
+## Joint Training Setup and Latent Alignment
+
+In parallel, we are training a TabNet encoder jointly with a frozen Transformer decoder to explore inverse generation from properties to SMILES. This setup allows the encoder to align with the latent space expected by the decoder. Although the decoder is not updated, the encoder learns to map property vectors to meaningful latent representations compatible with the decoder’s generation logic. Given the strong performance of TabNet in the property prediction task (as discussed in a prior section), we anticipate that its embeddings will effectively align with the decoder’s latent space to produce valid molecular structures. Ultimately, we aim to align the gradient fields of a PolyBERT encoder and TabNet encoder, as explored in our coupling loss experiments. This joint training framework is expected to bridge the semantic gap between property-driven and structure-driven representations, laying the foundation for a unified inverse design model.
 
 ---
 
