@@ -39,6 +39,11 @@ This blog explores a complete inverse design framework that bridges forward pred
 
 Unlike small molecules, polymers are materials composed of repeating units, and are often represented using abstract notations like pSMILES instead of fully enumerated atomic graphs. While this abstraction allows for scalable representation of potentially infinite chains, it also introduces unique challenges for generative models. In inverse design, the generated structure must not only be chemically valid, but also adhere to polymerization rules and produce repeat-consistent sequences. As a result, generative techniques developed for small molecules often require substantial adaptation before they can be applied effectively to polymer domains.
 
+<br>
+
+{% include figure.html path="assets/img/2025-05-25-inverse-polymer/pvc_monomer_ballstick.png" class="img-thumbnail w-50 mx-auto d-block" caption="Polyvinyl chloride (PVC) is a representative polymer composed of repeating units derived from vinyl chloride monomers. This figure shows the 3D structure of a vinyl chloride monomer, which polymerizes to form the repeating unit [CH₂]C(Cl)[*]." %}
+
+
 
 --- 
 
@@ -67,7 +72,9 @@ Ultimately, our goal is to replace the GRU decoder with a Transformer-based deco
 
 Our initial inverse task leverages TabNet to regress from a target property vector to a latent polymer embedding.
 
-TabNet structurally incorporates Transformer-style attention, making it well-suited for sequential and feature-selection tasks. However, in the PolyOne dataset (introduced in the PolyBERT paper), the 29 properties are not sequential but rather independent columns — raising concerns about whether TabNet, typically strong in sequential or hierarchical data, would still be effective in this context.
+TabNet structurally incorporates Transformer-style attention, but unlike traditional Transformers that model sequences, it is designed specifically for non-sequential, tabular data. This distinction is important because the 29 properties in the PolyOne dataset are independent features, not temporally ordered tokens.
+
+In fact, TabNet performs attention over features (not sequence positions) without relying on any positional encoding. This makes it particularly well-suited for domains like polymer property prediction, where each input dimension represents a distinct, unordered descriptor. Its sparse attention and learned feature masks allow the model to dynamically select informative subsets of features, adapting to the structure of tabular inputs<d-cite key="DBLP:journals/corr/abs-1908-07442"></d-cite>.
 
 To investigate this, we applied unsupervised pre-training on structured tables, as shown below:
 
