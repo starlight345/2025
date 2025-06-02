@@ -34,6 +34,9 @@ However, the *inverse problem* — generating a valid polymer structure that mat
 
 This blog explores a complete inverse design framework that bridges forward predictors and generative models. By combining TabNet-based embedding regressors, GRU-based SMILES decoders, and reinforcement learning-based structure refinement, we aim to create a pipeline that can both infer and construct polymers tailored to specific property targets. Ultimately, our goal is to replace the GRU decoder with a Transformer-based decoder and train a TabNet encoder that aligns with this Transformer decoder, thereby enabling efficient, gradient-guided inverse design. This architecture also avoids the need for large language models (LLMs), instead focusing on structured decoding with interpretable and task-specific modules. The long-term motivation is to align TabNet’s property-derived latent space with the decoder’s expectations, using a combination of reconstruction loss and gradient field coupling to improve consistency.
 
+Unlike small molecules, polymers are materials composed of repeating units, and are often represented using abstract notations like pSMILES instead of fully enumerated atomic graphs. While this abstraction allows for scalable representation of potentially infinite chains, it also introduces unique challenges for generative models. In inverse design, the generated structure must not only be chemically valid, but also adhere to polymerization rules and produce repeat-consistent sequences. As a result, generative techniques developed for small molecules often require substantial adaptation before they can be applied effectively to polymer domains.
+
+
 --- 
 
 # Prior Work and Motivation
@@ -43,6 +46,9 @@ A growing body of work has advanced the capabilities of polymer property predict
 TabNet, an attention-based model for tabular data, offers interpretable yet expressive modeling of polymer properties by selecting relevant input features per decision step <d-cite key="DBLP:journals/corr/abs-1908-07442"></d-cite>. Its ability to handle heterogeneous and high-dimensional descriptors has made it attractive for regression tasks in materials science.
 
 Simultaneously, chemical language models have emerged as powerful tools for sequence representation. **PolyBERT** <d-cite key="Kuenneth_2023"></d-cite>, for instance, uses transformer encoders pretrained on millions of pSMILES strings to generate embeddings that are structurally and semantically rich. These embeddings serve as the backbone for both property prediction and generation tasks.
+
+Most existing chemical language models — such as ChemBERTa<d-cite key="chithrananda2020chembertalargescaleselfsupervisedpretraining"></d-cite> and its successor ChemBERTa-2<d-cite key="ahmad2022chemberta2chemicalfoundationmodels"></d-cite>, as well as MolGPT<d-cite key="doi:10.1021/acs.jcim.1c00600"></d-cite> — are trained primarily on small molecules, where explicit atom-level structures are enumerated. Polymers, in contrast, are often represented using shorthand notations that describe repeating motifs (e.g., pSMILES). This abstraction complicates token-level generation and parsing, as it breaks many assumptions of traditional SMILES syntax. Models not explicitly trained on polymer-specific notations often misinterpret repeating units, placeholders like [*], or the absence of terminal groups — leading to invalid or chemically implausible outputs.
+
 
 Despite these advances, the majority of research has focused on *forward prediction* — estimating properties from structures — leaving the inverse task relatively underdeveloped. Recent attempts to improve generalization and robustness include **MMPolymer** <d-cite key="wang2024mmpolymermultimodalmultitaskpretraining"></d-cite>, which unifies visual, structural, and property data in a multimodal pretraining scheme, and **PolyGET** <d-cite key="feng2023polygetacceleratingpolymersimulations"></d-cite>, which incorporates equivariant transformers and forcefield supervision for high-fidelity polymer simulations. However, neither method fully addresses inverse structure generation from target properties.
 
@@ -62,7 +68,8 @@ TabNet structurally incorporates Transformer-style attention, making it well-sui
 
 To investigate this, we applied unsupervised pre-training on structured tables, as shown below:
 
-{% include figure.html path="assets/img/2025-05-25-inverse-polymer/tabnet_structure.png" class="img-fluid" %}
+{% include figure.html path="assets/img/2025-05-25-inverse-polymer/tabnet_structure.png" class="img-fluid"
+caption="TabNet architecture highlighting its feature selection and transformation modules used in property-to-embedding regression." %}
 
 To better understand the relationship between individual properties and the PolyBERT embedding, we applied structured masking during training — both for the property-to-embedding direction and the reverse embedding-to-property prediction. This bidirectional setup allowed us to assess how each property influences the latent space and vice versa. We hoped that by forcing the model to reason with only partial information at each step, TabNet would learn to identify key feature interactions.
 
@@ -165,6 +172,10 @@ These limitations highlight a crucial need for generative modeling, which allows
 # GRU Decoder for SMILES Generation
 
 To enable direct generation of polymer structures, we designed a GRU-based decoder that maps 600-dimensional embeddings to pSMILES sequences. SMILES are inherently sequential — token order directly affects molecular meaning — and GRUs are memory-efficient RNNs that perform well on limited data. Compared to LSTMs, GRUs train faster and generalize better under data scarcity. GRU-based generation has seen prior success in models like ChemTS<d-cite key="Yang_2017"></d-cite> and MolGPT<d-cite key="doi:10.1021/acs.jcim.1c00600"></d-cite>. While ChemTS explores SMILES generation via random mutation and reward-guided exploration, our model decodes structured embeddings into full SMILES strings using learned associations. Our approach differs in that it performs direct decoding from polymer property-guided latent vectors and aims to reconstruct meaningful structures deterministically.
+
+In contrast to conventional SMILES strings used for small molecules, polymer-specific SMILES (pSMILES) representations encode repeating units and often include unspecified bonding sites (e.g., [*]) to denote open chain ends. This abstraction is essential for expressing the potentially infinite nature of polymers, but it introduces unique decoding challenges. Unlike finite molecules with well-defined atom sequences, pSMILES strings demand models that can handle variable-length patterns, structural ambiguity, and context-dependent token semantics.
+
+To address this, we chose a GRU decoder for its ability to model such irregular sequential dependencies. GRUs are memory-efficient recurrent networks that have proven effective on chemically meaningful sequences, particularly under data-scarce conditions.
 
 We implemented a 2-layer GRU with hidden size 512 and dropout 0.1, trained via teacher forcing on (embedding, SMILES) pairs tokenized using a pretrained PolyBERT tokenizer. We used cross-entropy loss with padding tokens ignored and achieved ≈97.6% token-level accuracy on held-out validation sets. To enhance robustness, Gaussian noise was optionally added to the latent embedding during training, enabling more stable generation from perturbed embeddings. During inference, greedy decoding reconstructs SMILES sequences from embeddings, using the 600-dim input as the initial hidden state.
 
@@ -325,11 +336,14 @@ Another challenge involves decoder drift — the loss of embedding signal across
 
 In terms of structural validity, both GRU and Transformer-based decoders struggle to predict correct termination tokens, leading to malformed SMILES. This points to a broader issue of syntactic constraint modeling. To address this, we plan to incorporate chemical rules directly into the decoding process, either through masked token prediction, constraint-based beam search, or fragment-based priors. Additionally, hybrid approaches like motif-first decoding — inspired by JT-VAE — may help enforce coarse-to-fine structural coherence.
 
+A further challenge arises from the nature of polymer representation itself. Unlike discrete molecules, polymers are macromolecules with repeating structures, and their pSMILES notation often omits terminal atoms or includes wildcard placeholders (e.g., [*]). This abstraction introduces ambiguity in sequence decoding and forces generative models to implicitly learn polymerization rules — a task for which most molecular generation architectures are not originally designed.
+
 From the optimization side, our reward functions remain brittle. Property-based rewards, especially when derived from pretrained predictors, are often noisy or poorly calibrated. This makes reinforcement learning difficult to stabilize. We are investigating smoother reward landscapes via continuous-valued targets and ensemble-based uncertainty modeling, as well as exploring offline RL setups where guidance can be learned from high-reward demonstrations.
 
 Finally, while diffusion-based models with RL noise tuning offer flexibility, they pose their own difficulties: the action space becomes large and exploration-heavy, and naive policies may collapse to trivial solutions. To handle this, we are considering curriculum learning (starting from small perturbations), hierarchical noise decoders, and reward shaping techniques that encourage valid intermediate states.
 
-In the long term, we envision a unified training framework where TabNet, decoder, and RL modules co-evolve in a modular yet coupled fashion. This would allow the system to learn end-to-end mappings from properties to valid, diverse, and functionally aligned polymers — not only solving the inverse problem, but doing so in a controllable and chemically meaningful way.
+In the long term, we envision a unified training framework in which TabNet, the decoder, and RL modules co-evolve in a modular yet synergistic manner. This would enable end-to-end learning from properties to valid, diverse, and functionally aligned polymer structures — not merely solving the inverse problem, but doing so in a controllable and chemically principled way.
+
 
 ---
 
@@ -349,7 +363,7 @@ In essence, this pipeline evolves from retrieval → generation → optimization
 
 > Our journey reflects the philosophy of inverse design: to reason backward from properties to structure, not just approximately — but reliably, validly, and creatively.
 
-In the future, we aim to unify all modules—including TabNet, decoder, and reinforcement components—into a single end-to-end trainable system that can continuously adapt to property constraints while generating novel structures beyond existing chemical libraries.
+In the future, we aim to unify all modules—including TabNet, decoder, and reinforcement components—into a single end-to-end trainable system that can continuously adapt to property constraints while generating novel structures beyond existing chemical libraries. We hope this work lays the groundwork for more robust, polymer-specific generative models and inspires future research in modular inverse design frameworks.
 
 ---
 
