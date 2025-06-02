@@ -23,6 +23,9 @@ toc:
   - name: Conclusion
 ---
 
+# From Properties to Polymers: A Modular Pipeline for Inverse Design
+
+<br>
 
 # Introduction
 
@@ -47,7 +50,7 @@ TabNet, an attention-based model for tabular data, offers interpretable yet expr
 
 Simultaneously, chemical language models have emerged as powerful tools for sequence representation. **PolyBERT** <d-cite key="Kuenneth_2023"></d-cite>, for instance, uses transformer encoders pretrained on millions of pSMILES strings to generate embeddings that are structurally and semantically rich. These embeddings serve as the backbone for both property prediction and generation tasks.
 
-Most existing chemical language models — such as ChemBERTa<d-cite key="chithrananda2020chembertalargescaleselfsupervisedpretraining"></d-cite> and its successor ChemBERTa-2<d-cite key="ahmad2022chemberta2chemicalfoundationmodels"></d-cite>, as well as MolGPT<d-cite key="doi:10.1021/acs.jcim.1c00600"></d-cite> — are trained primarily on small molecules, where explicit atom-level structures are enumerated. Polymers, in contrast, are often represented using shorthand notations that describe repeating motifs (e.g., pSMILES). This abstraction complicates token-level generation and parsing, as it breaks many assumptions of traditional SMILES syntax. Models not explicitly trained on polymer-specific notations often misinterpret repeating units, placeholders like [*], or the absence of terminal groups — leading to invalid or chemically implausible outputs.
+Most existing chemical language models — such as **ChemBERTa**<d-cite key="chithrananda2020chembertalargescaleselfsupervisedpretraining"></d-cite> and its successor **ChemBERTa-2**<d-cite key="chemberta2"></d-cite>, as well as **MolGPT**<d-cite key="doi:10.1021/acs.jcim.1c00600"></d-cite> — are trained primarily on small molecules, where explicit atom-level structures are enumerated. Polymers, in contrast, are often represented using shorthand notations that describe repeating motifs (e.g., pSMILES). This abstraction complicates token-level generation and parsing, as it breaks many assumptions of traditional SMILES syntax. Models not explicitly trained on polymer-specific notations often misinterpret repeating units, placeholders like [*], or the absence of terminal groups — leading to invalid or chemically implausible outputs.
 
 
 Despite these advances, the majority of research has focused on *forward prediction* — estimating properties from structures — leaving the inverse task relatively underdeveloped. Recent attempts to improve generalization and robustness include **MMPolymer** <d-cite key="wang2024mmpolymermultimodalmultitaskpretraining"></d-cite>, which unifies visual, structural, and property data in a multimodal pretraining scheme, and **PolyGET** <d-cite key="feng2023polygetacceleratingpolymersimulations"></d-cite>, which incorporates equivariant transformers and forcefield supervision for high-fidelity polymer simulations. However, neither method fully addresses inverse structure generation from target properties.
@@ -284,7 +287,21 @@ Experiments are underway and will be updated in a future version of this blog.
 
 # Experiment Results
 
-We conducted a series of experiments to validate each component in our proposed inverse design pipeline, from property-to-embedding regression to structure generation and refinement.
+We conducted a series of experiments to validate each component in our proposed inverse design pipeline, from property prediction and property-to-embedding regression to structure generation and refinement.
+
+
+**Forward Property Prediction: PolyBERT vs. TabNet**
+
+To benchmark the forward task, we compared the performance of PolyBERT and TabNet in predicting properties from 600-d embeddings.
+
+| Model                       | Test Loss | Test R² Score |
+|----------------------------|-----------|----------------|
+| PolyBERT (linear classifier) | 982.18    | 0.92           |
+| TabNet (default)           | 1611.53   | 0.54           |
+| TabNet (tuned)             | **5.90**  | **0.97**       |
+
+These results confirm that with sufficient tuning, TabNet can match or exceed PolyBERT's performance in property prediction, despite its tabular, non-sequential architecture. This supports our use of TabNet as a versatile encoder in both forward and inverse design settings.
+
 
 **TabNet Embedding Regression**
 
@@ -296,6 +313,7 @@ Top-1 retrieval accuracy:
 - 19.7% on 2.5M candidates
 
 These results are over 490,000× better than random, confirming that TabNet effectively learns a structured mapping from properties to meaningful embeddings. However, performance degraded as the candidate pool grew, reflecting the limitations of retrieval-based methods in scaling and novelty.
+
 
 **SMILES Decoding: GRU vs. Seq2Seq**
 
@@ -322,6 +340,10 @@ We also trained a T5-style decoder to reconstruct SMILES. Despite similar top-1 
 
 
 This comparison motivated our exploration of joint encoder-decoder training, MCTS postprocessing, and diffusion+RL generation, aiming to improve structural validity and alignment with desired properties.
+
+**Ongoing Work: Diffusion + Reinforcement Learning**
+
+While our current results focus on TabNet-based embedding, SMILES decoding, and symbolic refinement via MCTS, we are actively developing a latent diffusion module combined with RL-guided noise policies. This new component is expected to improve diversity and controllability of generated polymers. However, empirical results from this approach are still in progress and will be shared in a future update.
 
 
 ---
