@@ -18,7 +18,11 @@ toc:
   - name: Prior Work and Motivation
   - name: TabNet-based Retrieval
   - name: GRU Decoder for SMILES Generation
+  - name: Improving Robustness and Validity
+  - name: Joint Training and Latent Alignment
   - name: Reinforcement Learning with MCTS
+  - name: Diffusion and RL for Polymer Generation
+  - name: Experiment Results
   - name: Challenges and Future Work
   - name: Conclusion
 ---
@@ -225,6 +229,10 @@ Pretraining led to a substantial boost in validity and structural accuracy, indi
 
 These results highlight the benefit of pretraining on structure-only tasks before finetuning on property-conditioned generation. By first learning to decode from real PolyBERT embeddings, the Transformer decoder gains exposure to chemically valid patterns and token transitions — making it more robust during the downstream inverse task. This supports the broader design philosophy of modular inverse generation: separating structure learning and conditioning phases enables more stable and effective decoding, especially when latent distributions differ.
 
+In parallel, we also experimented with a Transformer-based VAE decoder.
+Although not yet fully benchmarked, early results are highly encouraging, with syntactic validity exceeding 95% and Tanimoto similarity approaching 1.0. The VAE's latent sampling and KL-regularized structure allow for greater robustness under noise and smooth interpolation in latent space, which are especially useful when integrating diffusion-based generative models. This architecture thus holds strong potential as a future direction for one-to-many structure generation and property-guided diversity enhancement.
+
+
 # Improving Robustness and Validity
 
 To further address generation variability and increase model robustness, we plan to extend this setup into a diffusion-style training regime. In this framework, Gaussian noise is repeatedly added to the latent z, and the decoder is trained to map each noisy version back to the same SMILES output. This trains the decoder to produce consistent generations even under perturbations, laying the groundwork for controlled diversity and one-to-many mapping via policy-guided sampling.
@@ -385,11 +393,25 @@ To isolate the effect of pretraining the seq2seq decoder, we compared performanc
 
 These results confirm that pretraining the decoder on real PolyBERT embeddings helps it generalize better when later finetuned on TabNet-generated embeddings — likely by providing initial exposure to chemically valid latent patterns.
 
+**Preliminary Results: Transformer-based VAE for SMILES Generation**
+
+In addition to GRU and Seq2Seq decoders, we conducted a simple experiment with a Transformer-based Variational Autoencoder (VAE) to assess its effectiveness in SMILES generation. Despite limited tuning, the VAE model consistently achieved validity scores near **95%**, significantly outperforming our autoregressive decoders.
+
+Moreover, the Tanimoto similarity of valid outputs was consistently close to **1.0**, indicating strong structural fidelity in generated molecules.
+
+This improvement can be attributed to several structural advantages of the VAE framework:
+
+- Latent distribution modeling: By explicitly learning a Gaussian distribution over the input sequence, the model gains robustness to minor perturbations in the latent space — an ability lacking in standard deterministic decoders.
+- Non-autoregressive decoding: Unlike GRU or Transformer decoders that generate tokens sequentially, the VAE decoder operates more holistically, allowing it to model long-range dependencies without compounding prediction errors.
+- KL regularization: The use of a KL-divergence loss constrains the latent space to remain compact and smooth, which improves generalization and makes the decoder more tolerant to noisy embeddings.
+
+These results suggest that VAE-based approaches may be a promising direction for improving syntactic validity and structural consistency. Future work will extend this model to support conditioning on TabNet-generated embeddings or property vectors directly.
+
+Importantly, because the VAE explicitly models a continuous latent space with stochastic sampling, it offers a natural bridge to diffusion-based generation. The ability to sample and perturb latent vectors makes this a strong first step toward integrating latent diffusion models, where structured noise and iterative refinement can further improve diversity, controllability, and alignment with desired properties.
 
 **Ongoing Work: Diffusion + Reinforcement Learning**
 
 While our current results focus on TabNet-based embedding, SMILES decoding, and symbolic refinement via MCTS, we are actively developing a latent diffusion module combined with RL-guided noise policies. This new component is expected to improve diversity and controllability of generated polymers. However, empirical results from this approach are still in progress and will be shared in a future update.
-
 
 ---
 
