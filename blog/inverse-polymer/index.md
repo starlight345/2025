@@ -204,6 +204,27 @@ We also benchmarked our GRU decoder against a Transformer-based encoder-decoder 
 
 These findings highlight that both GRU and seq2seq decoding approaches still require significant improvement in terms of validity. GRU decoding currently appears more robust for latent-to-sequence generation, especially when working with a fixed embedding distribution. Seq2seq models may benefit from architectural innovations or stronger EOS supervision but underperformed in our setting. Moreover, we observed that the decoder’s performance improves when the latent embedding is repeatedly concatenated to the token inputs at each step — mitigating the vanishing context issue over long sequences.
 
+We evaluated the Transformer-based Seq2Seq decoder under two settings:
+
+- **Baseline (No Pretraining)**: The decoder was trained directly to map from property vectors to SMILES, without any prior exposure to PolyBERT latent space or structure-only training.
+- **Pretrained + Finetuned**: The decoder was first pretrained on SMILES reconstruction from PolyBERT embeddings, then fine-tuned on property-to-SMILES using TabNet-generated embeddings.
+
+Pretraining led to a substantial boost in validity and structural accuracy, indicating that prior exposure to structural patterns helps the decoder generalize better when conditioned on property embeddings.
+
+
+**Effect of Pretraining on Transformer Seq2Seq Decoder**
+
+| Split | No Pretraining Validity (%) | Pretrained + Finetuned Validity (%) | No Pretraining Tanimoto | Pretrained + Finetuned Tanimoto |
+|-------|------------------------|---------------------|--------------------|----------------|
+| 1     | 16                     | 46                  | 0.9425             | 0.9821         |
+| 2     | 23                     | 49                  | 0.9775             | 1.0000         |
+| 3     | 20                     | 51                  | 0.9853             | 0.9899         |
+| 4     | 20                     | 51                  | 0.9769             | 0.9929         |
+| 5     | 21                     | 47                  | 0.9675             | 0.9940         |
+
+
+These results highlight the benefit of pretraining on structure-only tasks before finetuning on property-conditioned generation. By first learning to decode from real PolyBERT embeddings, the Transformer decoder gains exposure to chemically valid patterns and token transitions — making it more robust during the downstream inverse task. This supports the broader design philosophy of modular inverse generation: separating structure learning and conditioning phases enables more stable and effective decoding, especially when latent distributions differ.
+
 # Improving Robustness and Validity
 
 To further address generation variability and increase model robustness, we plan to extend this setup into a diffusion-style training regime. In this framework, Gaussian noise is repeatedly added to the latent z, and the decoder is trained to map each noisy version back to the same SMILES output. This trains the decoder to produce consistent generations even under perturbations, laying the groundwork for controlled diversity and one-to-many mapping via policy-guided sampling.
@@ -219,6 +240,8 @@ Recognizing that sequential decoders trained under teacher forcing often lack aw
 To enable inverse generation of polymer structures from desired properties, we propose a joint training framework where a TabNet encoder is trained alongside a frozen Transformer-based decoder. In this setup, the decoder remains fixed — preserving its learned generation dynamics — while the encoder is trained to produce latent representations that fall within the decoder’s expected embedding space. This alignment allows the TabNet encoder, conditioned only on property vectors, to generate molecular structures by implicitly matching the decoder’s internal distribution.
 
 This strategy leverages the proven strength of TabNet in the property prediction task (as detailed in the retrieval section, where we achieved an R² of 0.97), and extends it to the generative domain. While the decoder is not updated during training, the encoder is progressively guided to encode property vectors into latent representations that are semantically meaningful and structurally decodable. This form of one-sided adaptation ensures that the generation process remains stable and grounded in the decoder’s learned grammar of SMILES construction.
+
+Initial experiments with joint training of the TabNet encoder and GRU decoder show significant gains in both validity and Tanimoto similarity, supporting the feasibility of an end-to-end inverse generation pipeline. Crucially, our long-term goal is to further refine this mapping through gradient field alignment between two distinct encoders: PolyBERT (trained on molecular structure) and TabNet (trained on properties).
 
 Crucially, our long-term goal is to further refine this mapping through gradient field alignment between two distinct encoders: PolyBERT (trained on molecular structure) and TabNet (trained on properties). By minimizing the directional discrepancy between their gradient fields — essentially encouraging their latent outputs to guide decoding in a coherent manner — we aim to couple the property-driven and structure-driven pathways into a unified inverse design system. This semantic alignment ensures that both encoders induce consistent trajectories in the decoder’s latent space, thereby improving the plausibility and accuracy of generated structures.
 
@@ -347,6 +370,21 @@ We also trained a T5-style decoder to reconstruct SMILES. Despite similar top-1 
 
 
 This comparison motivated our exploration of joint encoder-decoder training, MCTS postprocessing, and diffusion+RL generation, aiming to improve structural validity and alignment with desired properties.
+
+**Decoder Pretraining Ablation**
+
+To isolate the effect of pretraining the seq2seq decoder, we compared performance between models trained from scratch and those pretrained on PolyBERT embeddings before finetuning on TabNet outputs. Results show that pretraining substantially boosts both syntactic validity and structural accuracy.
+
+| Split | No Pretraining Validity (%) | Pretrained + Finetuned Validity (%) | No Pretraining Tanimoto | Pretrained + Finetuned Tanimoto |
+|-------|-----------------------------|-------------------------------------|--------------------------|-------------------------------|
+| 1     | 16                          | 46                                  | 0.9425                   | 0.9821                        |
+| 2     | 23                          | 49                                  | 0.9775                   | 1.0000                        |
+| 3     | 20                          | 51                                  | 0.9853                   | 0.9899                        |
+| 4     | 20                          | 51                                  | 0.9769                   | 0.9929                        |
+| 5     | 21                          | 47                                  | 0.9675                   | 0.9940                        |
+
+These results confirm that pretraining the decoder on real PolyBERT embeddings helps it generalize better when later finetuned on TabNet-generated embeddings — likely by providing initial exposure to chemically valid latent patterns.
+
 
 **Ongoing Work: Diffusion + Reinforcement Learning**
 
